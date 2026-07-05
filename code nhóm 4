@@ -1,1 +1,137 @@
+TRIGGER:
+CREATE TABLE AccessLogs_Audit
+(
+    AuditID INT AUTO_INCREMENT PRIMARY KEY,
+    ApprovalID INT,
+    DeviceID INT,
+    ServerID INT,
+    RevocationDate DATETIME,
+    AuditTime DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ActionDescription VARCHAR(255)
+);
+DELIMITER $$
+
+CREATE TRIGGER trg_serverapproval_audit
+
+AFTER UPDATE
+
+ON ServerApproval
+
+FOR EACH ROW
+
+BEGIN
+
+IF OLD.RevocationDate IS NULL
+AND NEW.RevocationDate IS NOT NULL THEN
+
+INSERT INTO AccessLogs_Audit
+(
+ApprovalID,
+DeviceID,
+ServerID,
+RevocationDate,
+ActionDescription
+)
+
+VALUES
+(
+NEW.ApprovalID,
+NEW.DeviceID,
+NEW.ServerID,
+NEW.RevocationDate,
+'Access permission revoked'
+);
+
+END IF;
+
+END$$
+CREATE TABLE AccessLogs_Audit
+(
+    AuditID INT AUTO_INCREMENT PRIMARY KEY,
+    ApprovalID INT,
+    DeviceID INT,
+    ServerID INT,
+    RevocationDate DATE,
+    AuditTime DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ActionDescription VARCHAR(255)
+);
+DELIMITER $$
+
+CREATE TRIGGER trg_serverapproval_audit
+AFTER UPDATE ON ServerApproval
+FOR EACH ROW
+BEGIN
+
+    IF OLD.RevocationDate IS NULL
+       AND NEW.RevocationDate IS NOT NULL THEN
+
+        INSERT INTO AccessLogs_Audit
+        (
+            ApprovalID,
+            DeviceID,
+            ServerID,
+            RevocationDate,
+            ActionDescription
+        )
+        VALUES
+        (
+            NEW.ApprovalID,
+            NEW.DeviceID,
+            NEW.ServerID,
+            NEW.RevocationDate,
+            'Access permission revoked'
+        );
+
+    END IF;
+
+END$$
+EVENT:
+SET GLOBAL event_scheduler = ON;
+
+CREATE EVENT ev_cleanup_audit
+ON SCHEDULE EVERY 1 MONTH
+STARTS CURRENT_TIMESTAMP + INTERVAL 1 MONTH
+ON COMPLETION PRESERVE
+DISABLE
+DO
+DELETE FROM AccessLogs_Audit
+WHERE AuditTime < DATE_SUB(NOW(), INTERVAL 180 DAY);
+INDEX:
+Index 1
+Nghiệp vụ
+Quản trị viên thường xuyên thống kê các lượt cấp quyền truy cập máy chủ theo Server và thời gian.
+Chính là Query Q07 của nhóm.
+CREATE INDEX idx_serverapproval_server_date
+ON ServerApproval
+(
+ServerID,
+ApprovalDate
+);
+
+Query được hỗ trợ
+SELECT *
+FROM ServerApproval
+WHERE ServerID = 2
+AND ApprovalDate >= '2026-01-01';
+
+Giải thích
+Điều kiện
+ServerID =
+là điều kiện Equality.
+Sau đó
+ApprovalDate >=
+là điều kiện Range.
+Vì vậy thứ tự
+(ServerID, ApprovalDate)
+là tối ưu.
+Index 2
+Nghiệp vụ
+Theo Query Q02 và Q05, hệ thống thường xuyên tìm thiết bị theo người dùng.
+CREATE INDEX idx_device_user
+ON Device(UserID);
+
+Query được hỗ trợ
+SELECT *
+FROM Device
+WHERE UserID=15;
 
