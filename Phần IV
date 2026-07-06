@@ -1,0 +1,101 @@
+1.	Stored Function: “fn_count_active_virtual_machines” (Đếm số lượng máy chủ ảo đang hoạt động):
+USE UniSecureResearchCloud;
+DROP FUNCTION IF EXISTS fn_count_active_virtual_machines;
+DELIMITER $$
+CREATE FUNCTION fn_count_active_virtual_machines(p_PhysicalServerID INT)
+RETURNS INT
+READS SQL DATA
+BEGIN
+    DECLARE v_vm_count INT DEFAULT 0;
+    -- Thực hiện đếm số lượng máy chủ ảo dựa trên mã máy chủ vật lý truyền vào
+    SELECT COUNT(*) INTO v_vm_count
+    FROM VirtualMachine
+    WHERE PhysicalServerID = p_PhysicalServerID;
+    RETURN v_vm_count;
+END$$
+DELIMITER ;
+
+-- Gọi hàm trực tiếp trong câu lệnh SELECT để kiểm tra máy chủ vật lý mã số 1
+SELECT ServerID, ServerName, fn_count_active_virtual_machines(ServerID) AS ActiveVMs 
+FROM Server 
+WHERE ServerID = 1;
+
+
+2.	Stored Procedure 1: “sp_approve_server_access” (Phê duyệt và tái cấp quyền truy cập máy chủ):
+USE UniSecureResearchCloud;
+DROP PROCEDURE IF EXISTS sp_approve_server_access;
+DELIMITER $$
+CREATE PROCEDURE sp_approve_server_access(
+    IN p_DeviceID INT,
+    IN p_ServerID INT
+)
+BEGIN
+    DECLARE v_DeviceExists INT;
+    DECLARE v_ServerExists INT;
+    DECLARE v_HasRecord INT;
+
+    -- 1. Kiểm tra tính hợp lệ của Thiết bị
+    SELECT COUNT(*) INTO v_DeviceExists FROM Device WHERE DeviceID = p_DeviceID;
+-- 2. Kiểm tra tính hợp lệ của Máy chủ
+    SELECT COUNT(*) INTO v_ServerExists FROM Server WHERE ServerID = p_ServerID;
+    IF v_DeviceExists = 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Loi an ninh: Ma thiet bi truyen vao khong ton tai tren he thong!';
+    ELSEIF v_ServerExists = 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Loi an ninh: Ma may chu truyen vao khong ton tai tren he thong!';
+    ELSE
+        -- 3. Kiểm tra xem cặp thiết bị và máy chủ này đã từng tồn tại bản ghi phê duyệt chưa
+        SELECT COUNT(*) INTO v_HasRecord 
+        FROM ServerApproval 
+        WHERE DeviceID = p_DeviceID AND ServerID = p_ServerID;
+        IF v_HasRecord > 0 THEN
+            -- Trường hợp tái phê duyệt: Cập nhật lại Ngày phê duyệt và đặt Ngày thu hồi về NULL
+            UPDATE ServerApproval
+            SET ApprovalDate = CURDATE(), RevocationDate = NULL
+            WHERE DeviceID = p_DeviceID AND ServerID = p_ServerID;
+        ELSE
+            -- Trường hợp cấp mới hoàn toàn
+            INSERT INTO ServerApproval (DeviceID, ServerID, ApprovalDate, RevocationDate)
+            VALUES (p_DeviceID, p_ServerID, CURDATE(), NULL);
+        END IF;
+    END IF;
+END$$
+DELIMITER ;
+
+
+3.	Stored Procedure 2: sp_register_user_service (Cấp quyền sử dụng dịch vụ trong khối Giao dịch an toàn - Transaction):
+USE UniSecureResearchCloud;
+DROP PROCEDURE IF EXISTS sp_register_user_service;
+DELIMITER $$
+CREATE PROCEDURE sp_register_user_service(
+    IN p_UserID INT,
+    IN p_ServiceID INT
+)
+BEGIN
+    DECLARE v_CurrentUsername VARCHAR(50);
+    DECLARE v_ServiceExists INT;
+    -- Khai báo bộ xử lý lỗi hệ thống: Tự động Rollback và ném thông báo nếu xảy ra sự cố lỗi SQL
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Giao dich that bai! He thong da kich hoat Rollback de bao ve an toan du lieu.';
+    END;
+-- Kiểm tra mã dịch vụ có tồn tại thực tế hay không
+    SELECT COUNT(*) INTO v_ServiceExists FROM Service WHERE ServiceID = p_ServiceID;
+    IF v_ServiceExists = 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Loi nghiep vu: Ma dich vu khong ton tai tren he thong!';
+    END IF;
+    -- Bắt đầu khởi tạo khối Giao dịch an toàn (Transaction)
+    START TRANSACTION;
+        -- Truy vấn thông tin tài khoản đăng nhập hiện tại của người dùng
+        SELECT Username INTO v_CurrentUsername FROM UserAccount WHERE UserID = p_UserID;
+        -- Áp dụng Quy tắc nghiệp vụ 15: Nếu thông tin tài khoản trống, chặn quy trình và kích hoạt thông báo lỗi
+        IF v_CurrentUsername IS NULL OR v_CurrentUsername = '' THEN
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Loi bao mat: Nguoi dung bat buoc phai khai bao Username va Password truoc khi duoc cap quyen su dung dich vu!';
+        END IF;
+        -- Nếu hợp lệ, tiến hành chèn bản ghi cấp quyền dịch vụ cho người dùng
+        INSERT INTO ServicePermission (UserID, ServiceID, GrantDate)
+        VALUES (p_UserID, p_ServiceID, CURDATE());
+    -- Xác nhận hoàn tất và ghi nhận dữ liệu vĩnh viễn vào đĩa cứng khi toàn bộ các bước thành công
+    COMMIT;
+END$$
+DELIMITER ;
