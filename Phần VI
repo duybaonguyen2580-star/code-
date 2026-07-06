@@ -1,0 +1,61 @@
+6.1. Chiến lược phân quyền (Role-Based Access Control - RBAC):
+-- 1. Tạo các Role quản trị hệ thống 
+CREATE ROLE 'rl_security_auditor', 'rl_sysadmin', 'rl_research_manager'; 
+-- 2. Tạo các User đại diện (Gắn với IP cục bộ hoặc mạng nội bộ) 
+CREATE USER 'sec_staff_01'@'localhost' IDENTIFIED BY 'Sec@2026_Strong!'; 
+CREATE USER 'sys_admin_01'@'localhost' IDENTIFIED BY 'Admin@2026_Cloud!'; 
+CREATE USER 'res_manager_01'@'localhost' IDENTIFIED BY 'Res@2026_Read!'; 
+-- 3. Cấp Role cho từng User tương ứng 
+GRANT 'rl_security_auditor' TO 'sec_staff_01'@'localhost'; 
+GRANT 'rl_sysadmin' TO 'sys_admin_01'@'localhost'; 
+GRANT 'rl_research_manager' TO 'res_manager_01'@'localhost'; 
+-- 4. Kích hoạt Role mặc định khi người dùng đăng nhập 
+SET DEFAULT ROLE 'rl_security_auditor' TO 'sec_staff_01'@'localhost'; 
+SET DEFAULT ROLE 'rl_sysadmin' TO 'sys_admin_01'@'localhost'; 
+SET DEFAULT ROLE 'rl_research_manager' TO 'res_manager_01'@'localhost'; 
+
+
+6.2. Cấp quyền chi tiết theo nghiệp vụ (Granting Permissions):
+-- Cho phép ghi nhận và cập nhật lịch sử kiểm tra thiết bị.  
+-- KHÔNG CẤP QUYỀN DELETE để tránh việc xóa dấu vết kiểm định an ninh (Audit Log). 
+GRANT SELECT, INSERT, UPDATE ON UniSecureResearchCloud.Device TO 'rl_security_auditor'; 
+GRANT SELECT, INSERT, UPDATE ON UniSecureResearchCloud.SecurityInspectionLog TO 'rl_security_auditor'; 
+GRANT SELECT ON UniSecureResearchCloud.UserAccount TO 
+'rl_security_auditor'; 
+-- Cấp quyền quản lý hạ tầng (CRUD) 
+GRANT SELECT, INSERT, UPDATE, DELETE ON UniSecureResearchCloud.Server TO 'rl_sysadmin'; 
+GRANT SELECT, INSERT, UPDATE, DELETE ON UniSecureResearchCloud.Service TO 'rl_sysadmin'; 
+GRANT SELECT, INSERT, UPDATE, DELETE ON UniSecureResearchCloud.ServerApproval TO 'rl_sysadmin'; 
+GRANT SELECT, INSERT, UPDATE, DELETE ON UniSecureResearchCloud.ServicePermission TO 'rl_sysadmin'; 
+-- Cấp quyền thực thi Thủ tục (Stored Procedures) đã tạo ở Phần IV 
+GRANT EXECUTE ON PROCEDURE UniSecureResearchCloud.sp_CapQuyenKetNoi TO 'rl_sysadmin'; 
+GRANT EXECUTE ON PROCEDURE UniSecureResearchCloud.sp_DangKyDichVu TO 'rl_sysadmin'; 
+-- Quyền đọc trên bảng Nhân sự để đối chiếu 
+GRANT SELECT ON UniSecureResearchCloud.UserAccount TO 'rl_sysadmin'; 
+GRANT SELECT ON UniSecureResearchCloud.Department TO 'rl_sysadmin'; Cấp quyền cho Quản lý / Trưởng phòng (rl_research_manager): 
+-- Chỉ được quyền truy vấn các Khung nhìn (VIEWS) ở Phần III và Hàm đếm (Function) ở Phần IV 
+GRANT SELECT ON UniSecureResearchCloud.vw_BaoCaoTruyCap TO 
+'rl_research_manager'; 
+GRANT EXECUTE ON FUNCTION 
+UniSecureResearchCloud.fn_DemMayChuAo TO 'rl_research_manager'; 
+-- Cập nhật quyền vào hệ thống FLUSH PRIVILEGES; 
+
+
+6.3. Kiểm tra thông tin siêu dữ liệu quyền hạn (Metadata Inspection):
+-- Lệnh kiểm tra quyền của Role an ninh 
+SHOW GRANTS FOR 'rl_security_auditor'; 
+-- Lệnh kiểm tra quyền thực tế của User SysAdmin 
+SHOW GRANTS FOR 'sys_admin_01'@'localhost' USING 'rl_sysadmin'; 
+
+
+6.4. Kế hoạch Sao lưu và Phục hồi Dữ liệu (Backup & Restore Runbook):
+mysqldump -u root -p --routines --triggers --events --single-transaction -databases UniSecureResearchCloud > C:\Backup\UniSecure_FullBackup_2026.sql 
+mysql -u root -p < C:\Backup\UniSecure_FullBackup_2026.sql 
+
+
+6.5. Tăng cường Bảo mật Dữ liệu nhạy cảm (Định hướng khắc phục hạn chế giữa kỳ):
+-- (Ví dụ minh họa tính năng mã hóa MAC Address tại CSDL) 
+-- Mã hóa dữ liệu khi thêm mới: 
+-- INSERT INTO Device(MACAddress) VALUES 
+(HEX(AES_ENCRYPT('00:1B:44:11:3A:B7', 'Uni_SecretKey_2026'))); 
+-- Giới hạn quyền giải mã (AES_DECRYPT) chỉ dành cho role rl_sysadmin. 
