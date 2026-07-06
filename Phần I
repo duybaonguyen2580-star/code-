@@ -1,0 +1,67 @@
+Q01: Lọc dữ liệu cơ bản trên một bảng kèm sắp xếp:
+SELECT ServerID, ServerName, IPAddress, OperatingSystem 
+FROM Server 
+WHERE OperatingSystem LIKE '%Linux%' OR OperatingSystem LIKE '%Ubuntu%'
+ORDER BY ServerName ASC;
+ORDER BY ServerName ASC;
+
+Q02: Truy vấn kết hợp nhiều bảng (INNER JOIN ≥ 3 bảng):
+SELECT 
+    CONCAT(u.LastName, ' ', u.MiddleName, ' ', u.FirstName) AS FullName,
+    d.DepartmentName,
+    f.StaticIP,
+    f.BuildingName,
+    f.RoomNumber
+FROM UserAccount u
+JOIN Department d ON u.DepartmentID = d.DepartmentID
+JOIN Device dv ON u.UserID = dv.UserID
+JOIN FixedDevice f ON dv.DeviceID = f.DeviceID;
+
+Q03: Truy vấn tìm kiếm dữ liệu thiếu (LEFT JOIN kiểm tra NULL):
+SELECT s.ServerID, s.ServerName, s.IPAddress
+FROM Server s
+LEFT JOIN VirtualMachine vm ON s.ServerID = vm.PhysicalServerID
+WHERE vm.PhysicalServerID IS NULL;
+
+Q04: Truy vấn gom nhóm dữ liệu có điều kiện lọc (GROUP BY + HAVING):
+SELECT d.DepartmentID, d.DepartmentName, COUNT(dv.DeviceID) AS TotalDevices
+FROM Department d
+JOIN UserAccount u ON d.DepartmentID = u.DepartmentID
+JOIN Device dv ON u.UserID = dv.UserID
+GROUP BY d.DepartmentID, d.DepartmentName
+HAVING COUNT(dv.DeviceID) >= 3;
+
+Q05: Truy vấn sử dụng câu lệnh lồng nhau (Subquery với NOT EXISTS):
+SELECT u.UserID, u.LastName, u.FirstName, u.Title
+FROM UserAccount u
+WHERE NOT EXISTS (
+    SELECT 1 
+    FROM Device dv 
+    WHERE dv.UserID = u.UserID
+);
+
+Q06: Truy vấn phức tạp sử dụng biểu thức bảng tạm (CTE):
+WITH MobileCount_CTE AS (
+    SELECT d.DepartmentName, COUNT(md.DeviceID) AS MobileDeviceCount
+    FROM Department d
+    JOIN UserAccount u ON d.DepartmentID = u.DepartmentID
+    JOIN Device dv ON u.UserID = dv.UserID
+    JOIN MobileDevice md ON dv.DeviceID = md.DeviceID
+    GROUP BY d.DepartmentName
+)
+SELECT DepartmentName, MobileDeviceCount 
+FROM MobileCount_CTE
+WHERE MobileDeviceCount = (SELECT MAX(MobileDeviceCount) FROM MobileCount_CTE);
+
+Q07: Truy vấn thống kê phân tích theo thời gian:
+SELECT MONTH(ApprovalDate) AS ActiveMonth, COUNT(*) AS TotalNewApprovals
+FROM ServerApproval
+WHERE YEAR(ApprovalDate) = 2026 AND RevocationDate IS NULL
+GROUP BY MONTH(ApprovalDate)
+ORDER BY ActiveMonth;
+
+Q08: Truy vấn phức tạp kết hợp lấy dữ liệu từ Khung nhìn (View):
+SELECT ServerName, IPAddress, ActiveServiceCount 
+FROM vw_server_service_density 
+WHERE ActiveServiceCount > 0
+ORDER BY ActiveServiceCount DESC;
