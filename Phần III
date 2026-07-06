@@ -1,0 +1,36 @@
+1. View 1: vw_server_service_density (Thống kê mật độ dịch vụ trên máy chủ):
+USE UniSecureResearchCloud;
+CREATE OR REPLACE VIEW vw_server_service_density AS
+SELECT 
+    s.ServerID,
+    s.ServerName,
+    s.IPAddress,
+    s.OperatingSystem,
+    COUNT(sv.ServiceID) AS ActiveServiceCount
+FROM Server s
+LEFT JOIN Service sv ON s.ServerID = sv.ServerID
+GROUP BY s.ServerID, s.ServerName, s.IPAddress, s.OperatingSystem;
+-- Kiểm tra toàn bộ danh sách phân bổ tải dịch vụ sắp xếp giảm dần
+SELECT * FROM vw_server_service_density ORDER BY ActiveServiceCount DESC;
+
+2. View 2: vw_mobile_security_dashboard (Báo cáo an ninh thiết bị di động):
+USE UniSecureResearchCloud;
+CREATE OR REPLACE VIEW vw_mobile_security_dashboard AS
+SELECT 
+    d.DeviceID,
+    d.Manufacturer,
+    d.Model,
+    md.OperatingSystem,
+    md.OSVersion,
+    md.ScreenLock,
+    md.DataEncryption,
+    u.UserID,
+    CONCAT(u.LastName, ' ', u.MiddleName, ' ', u.FirstName) AS OwnerFullName,
+    u.Title
+FROM Device d
+JOIN MobileDevice md ON d.DeviceID = md.DeviceID
+JOIN UserAccount u ON d.UserID = u.UserID;
+-- Lọc nhanh danh sách các thiết bị vi phạm chính sách (chưa bật khóa màn hình HOẶC chưa mã hóa dữ liệu)
+SELECT DeviceID, OwnerFullName, Manufacturer, Model, ScreenLock, DataEncryption 
+FROM vw_mobile_security_dashboard 
+WHERE ScreenLock = 'Khong' OR DataEncryption = 'Khong';
